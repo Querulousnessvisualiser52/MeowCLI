@@ -3,6 +3,7 @@
 .idea
 .ace-tool
 build
+dist
 meowcli.db
 
 web/node_modules

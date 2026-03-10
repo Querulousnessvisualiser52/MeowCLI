@@ -1,66 +1,65 @@
-APP_NAME    := meowcli
-MODULE      := github.com/nekohy/MeowCLI
-WEB_DIR     := web
-BUILD_DIR   := build
+SHELL := bash
+.DEFAULT_GOAL := build
 
-VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME  := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+APP_NAME := meowcli
+MODULE := github.com/nekohy/MeowCLI
+WEB_DIR := web
+BUILD_DIR := build
+DIST_DIR := dist
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-LDFLAGS     := -s -w \
-               -X '$(MODULE)/internal/app.Version=$(VERSION)' \
-               -X '$(MODULE)/internal/app.Commit=$(COMMIT)' \
-               -X '$(MODULE)/internal/app.BuildTime=$(BUILD_TIME)'
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+GOFLAGS ?=
 
-GO          := go
-GOFLAGS     ?=
-PLATFORMS   := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+LDFLAGS := -s -w \
+	-X '$(MODULE)/internal/app.Version=$(VERSION)' \
+	-X '$(MODULE)/internal/app.Commit=$(COMMIT)' \
+	-X '$(MODULE)/internal/app.BuildTime=$(BUILD_TIME)'
 
-.PHONY: all build build-all frontend serve dev-admin lint test sqlc cross docker clean
+.PHONY: frontend build serve dev-admin sqlc cross release docker clean
 
-# ── Default ─────────────────────────────────────────────────
-all: build-all
-
-# ── Frontend ────────────────────────────────────────────────
 frontend:
 	npm --prefix $(WEB_DIR) ci --ignore-scripts
 	npm --prefix $(WEB_DIR) run build:ssg
 
-# ── Go build ────────────────────────────────────────────────
-build:
-	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(APP_NAME) .
+build: frontend
+	mkdir -p $(BUILD_DIR)
+	go build $(GOFLAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(APP_NAME) .
 
-build-all: frontend build
-
-# ── Dev ─────────────────────────────────────────────────────
 serve:
-	$(GO) run $(GOFLAGS) -ldflags "$(LDFLAGS)" .
+	go run $(GOFLAGS) -ldflags "$(LDFLAGS)" .
 
 dev-admin:
 	npm --prefix $(WEB_DIR) run dev
 
-# ── Codegen ─────────────────────────────────────────────────
 sqlc:
 	sqlc generate
 
-# ── Cross-compilation ──────────────────────────────────────
 cross: frontend
-	@for platform in $(PLATFORMS); do \
-		os=$$(echo $$platform | cut -d/ -f1); arch=$$(echo $$platform | cut -d/ -f2); \
-		ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
-		echo ">> Building $$os/$$arch"; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 \
-			$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" \
-			-o $(BUILD_DIR)/$(APP_NAME)-$$os-$$arch$$ext . ; \
+	rm -rf $(DIST_DIR)
+	mkdir -p $(DIST_DIR)
+	for platform in $(PLATFORMS); do \
+		os=$$(echo $$platform | cut -d/ -f1); \
+		arch=$$(echo $$platform | cut -d/ -f2); \
+		ext=""; \
+		[ "$$os" = "windows" ] && ext=".exe"; \
+		out="$(DIST_DIR)/$(APP_NAME)-$$os-$$arch$$ext"; \
+		echo ">> $$out"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
+			go build $(GOFLAGS) -trimpath -ldflags "$(LDFLAGS)" -o "$$out" .; \
 	done
 
-# ── Docker ──────────────────────────────────────────────────
-docker:
-	docker build -t $(APP_NAME):$(VERSION) \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg COMMIT=$(COMMIT) .
+release: cross
+	cd $(DIST_DIR) && sha256sum $(APP_NAME)-* > checksums-sha256.txt
 
-# ── Cleanup ─────────────────────────────────────────────────
+docker:
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(APP_NAME):$(VERSION) .
+
 clean:
-	rm -rf $(BUILD_DIR)
-	rm -rf $(WEB_DIR)/.nuxt $(WEB_DIR)/.output $(WEB_DIR)/dist
+	rm -rf $(BUILD_DIR) $(DIST_DIR) $(WEB_DIR)/.nuxt $(WEB_DIR)/.output $(WEB_DIR)/dist

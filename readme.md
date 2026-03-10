@@ -83,7 +83,7 @@ make serve
 make dev-admin
 
 # 完整构建（前端 SSG + Go 二进制）
-make build-all
+make build
 ```
 
 ### 常用命令
@@ -91,6 +91,7 @@ make build-all
 ```bash
 make sqlc          # 重新生成 sqlc 代码
 make cross         # 交叉编译所有平台
+make release       # 生成发布二进制和 checksum
 make docker        # 构建 Docker 镜像
 make clean         # 清理构建产物
 ```
@@ -104,7 +105,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-CI 会自动完成：交叉编译 6 个平台二进制 → 生成 checksum → 创建 GitHub Release → 构建并推送 Docker 镜像到 GHCR
+CI 会自动完成：生成 6 个平台发布二进制 → 生成 checksum → 创建 GitHub Release → 构建并推送 Docker 镜像到 GHCR
 
 ## 项目结构
 

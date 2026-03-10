@@ -2,17 +2,25 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
 
 permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  # ── Build binaries & create GitHub Release ───────────────
   release:
     runs-on: ubuntu-latest
     steps:
@@ -29,47 +37,36 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache-dependency-path: go.sum
 
-      - name: Build frontend
+      - name: Set build metadata
         run: |
-          npm ci --prefix web --ignore-scripts
-          npm run --prefix web build:ssg
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
 
-      - name: Cross-compile binaries
-        run: |
-          VERSION=${GITHUB_REF_NAME}
-          COMMIT=${GITHUB_SHA::7}
-          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-          LDFLAGS="-s -w \
-            -X 'github.com/nekohy/MeowCLI/internal/app.Version=${VERSION}' \
-            -X 'github.com/nekohy/MeowCLI/internal/app.Commit=${COMMIT}' \
-            -X 'github.com/nekohy/MeowCLI/internal/app.BuildTime=${BUILD_TIME}'"
+      - name: Build release binaries
+        run: make release VERSION="${GITHUB_REF_NAME}" COMMIT="${SHORT_SHA}" BUILD_TIME="${BUILD_TIME}"
 
-          mkdir -p dist
-          for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
-            os=${platform%/*}; arch=${platform#*/}
-            ext=""; [ "$os" = "windows" ] && ext=".exe"
-            echo ">> Building ${os}/${arch}"
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch \
-              go build -ldflags "$LDFLAGS" -o "dist/meowcli-${os}-${arch}${ext}" .
-          done
-
-          cd dist && sha256sum meowcli-* > checksums-sha256.txt
-
-      - name: Create release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: dist/*
+          fail_on_unmatched_files: true
+          files: |
+            dist/meowcli-*
+            dist/checksums-sha256.txt
 
-  # ── Build & push Docker image ────────────────────────────
   docker:
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lowercase image name
-        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Set build metadata
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-qemu-action@v3
 
@@ -87,6 +84,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=auto
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -103,6 +102,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ env.SHORT_SHA }}
+            BUILD_TIME=${{ env.BUILD_TIME }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
