@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.ace-tool
+build
+meowcli.db
+
+web/node_modules
+web/.nuxt
+web/.output
+
+*.exe
+*.db

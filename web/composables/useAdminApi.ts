@@ -1,0 +1,197 @@
+import type {
+  AuthKeyItem,
+  BatchCreateResponse,
+  BatchDeleteResponse,
+  BatchStatusResponse,
+  CreateAuthKeyResponse,
+  ModelItem,
+  OverviewResponse,
+  PaginatedResponse,
+  CodexItem,
+  LogItem,
+  SettingsSnapshot,
+  SetupResult,
+} from '~/types/admin'
+
+const PRIMARY_TOKEN_KEY = 'meowcli_admin_token'
+const LEGACY_TOKEN_KEY = 'admin_token'
+
+export const AUTH_INVALID_EVENT = 'meowcli-admin-auth-invalid'
+
+export class ApiError extends Error {
+  status: number
+  data: unknown
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.data = data
+  }
+}
+
+interface RequestOptions {
+  token?: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  body?: unknown
+  query?: Record<string, string | number | boolean | undefined | null>
+}
+
+function buildUrl(path: string, query?: RequestOptions['query']) {
+  const url = new URL(`/admin/api${path}`, window.location.origin)
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value))
+      }
+    })
+  }
+  return url.toString()
+}
+
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+
+  const text = await response.text()
+  if (!text) {
+    return null
+  }
+  return { error: text }
+}
+
+export function getStoredToken() {
+  if (!import.meta.client) {
+    return ''
+  }
+  return localStorage.getItem(PRIMARY_TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY) || ''
+}
+
+export function setStoredToken(token: string) {
+  if (!import.meta.client) {
+    return
+  }
+
+  if (!token) {
+    localStorage.removeItem(PRIMARY_TOKEN_KEY)
+    localStorage.removeItem(LEGACY_TOKEN_KEY)
+    return
+  }
+
+  localStorage.setItem(PRIMARY_TOKEN_KEY, token)
+  localStorage.setItem(LEGACY_TOKEN_KEY, token)
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { token = '', method = 'GET', body, query } = options
+  const headers: Record<string, string> = {}
+
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(buildUrl(path, query), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+
+  const data = await parseResponse(response)
+  if (!response.ok) {
+    if ((response.status === 401 || response.status === 403) && token && getStoredToken() === token && import.meta.client) {
+      setStoredToken('')
+      window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT, { detail: { status: response.status } }))
+    }
+    throw new ApiError((data as { error?: string } | null)?.error || `Request failed (${response.status})`, response.status, data)
+  }
+
+  return data as T
+}
+
+export const adminApi = {
+  status() {
+    return apiRequest<{ need_setup: boolean }>('/status')
+  },
+  setup(payload: Partial<{ key: string; note: string }>) {
+    return apiRequest<SetupResult>('/setup', { method: 'POST', body: payload })
+  },
+  overview(token: string) {
+    return apiRequest<OverviewResponse>('/overview', { token })
+  },
+  getSettings(token: string) {
+    return apiRequest<SettingsSnapshot>('/settings', { token })
+  },
+  updateSettings(token: string, payload: SettingsSnapshot) {
+    return apiRequest<{ settings: SettingsSnapshot; deleted_free_accounts: string[] }>('/settings', {
+      token,
+      method: 'PUT',
+      body: payload,
+    })
+  },
+  listCodex(token: string, options: { page?: number; pageSize?: number } = {}) {
+    const { page = 1, pageSize = 25 } = options
+    return apiRequest<PaginatedResponse<CodexItem>>('/codex', {
+      token,
+      query: { page, page_size: pageSize },
+    })
+  },
+  batchCreateCodex(token: string, payload: { tokens: string[] }) {
+    return apiRequest<BatchCreateResponse>('/codex', { token, method: 'POST', body: payload })
+  },
+  batchUpdateCodexStatus(token: string, payload: { ids: string[]; status: string }) {
+    return apiRequest<BatchStatusResponse>('/codex/status', { token, method: 'PUT', body: payload })
+  },
+  batchDeleteCodex(token: string, payload: { ids: string[] }) {
+    return apiRequest<BatchDeleteResponse>('/codex', { token, method: 'DELETE', body: payload })
+  },
+  listModels(token: string) {
+    return apiRequest<ModelItem[]>('/models', { token })
+  },
+  createModel(token: string, payload: { alias: string; origin: string; handler: string; extra: Record<string, unknown> }) {
+    return apiRequest<ModelItem>('/models', { token, method: 'POST', body: payload })
+  },
+  updateModel(token: string, alias: string, payload: { origin: string; handler: string; extra: Record<string, unknown> }) {
+    return apiRequest<ModelItem>(`/models/${encodeURIComponent(alias)}`, {
+      token,
+      method: 'PUT',
+      body: payload,
+    })
+  },
+  deleteModel(token: string, alias: string) {
+    return apiRequest<{ ok: boolean }>(`/models/${encodeURIComponent(alias)}`, {
+      token,
+      method: 'DELETE',
+    })
+  },
+  listLogs(token: string, options: { page?: number; pageSize?: number } = {}) {
+    const { page = 1, pageSize = 25 } = options
+    return apiRequest<PaginatedResponse<LogItem>>('/logs', {
+      token,
+      query: { page, page_size: pageSize },
+    })
+  },
+  listAuthKeys(token: string) {
+    return apiRequest<AuthKeyItem[]>('/auth-keys', { token })
+  },
+  createAuthKey(token: string, payload: { key?: string; role: string; note: string }) {
+    return apiRequest<CreateAuthKeyResponse>('/auth-keys', { token, method: 'POST', body: payload })
+  },
+  updateAuthKey(token: string, key: string, payload: { role: string; note: string }) {
+    return apiRequest<CreateAuthKeyResponse>(`/auth-keys/${encodeURIComponent(key)}`, {
+      token,
+      method: 'PUT',
+      body: payload,
+    })
+  },
+  deleteAuthKey(token: string, key: string) {
+    return apiRequest<{ ok: boolean }>(`/auth-keys/${encodeURIComponent(key)}`, {
+      token,
+      method: 'DELETE',
+    })
+  },
+}

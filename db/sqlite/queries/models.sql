@@ -1,0 +1,22 @@
+-- name: ReverseInfoFromModel :one
+SELECT origin, handler, extra
+FROM models
+WHERE alias = ?
+LIMIT 1;
+
+-- name: ListModels :many
+SELECT * FROM models ORDER BY alias;
+
+-- name: CreateModel :one
+INSERT INTO models (alias, origin, handler, extra)
+VALUES (?, ?, ?, ?)
+RETURNING *;
+
+-- name: UpdateModel :one
+UPDATE models
+SET origin = ?, handler = ?, extra = ?
+WHERE alias = ?
+RETURNING *;
+
+-- name: DeleteModel :execrows
+DELETE FROM models WHERE alias = ?;

@@ -1,0 +1,46 @@
+CREATE TABLE IF NOT EXISTS models (
+    alias TEXT PRIMARY KEY,
+    origin TEXT NOT NULL,
+    handler TEXT NOT NULL,
+    extra JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_models_handler ON models(handler);
+
+CREATE TABLE IF NOT EXISTS codex (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'enabled',
+    access_token TEXT NOT NULL,
+    expired TIMESTAMPTZ NOT NULL,
+    refresh_token TEXT NOT NULL,
+    plan_type TEXT NOT NULL,
+    plan_expired TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_codex_status_expired ON codex(status, expired);
+DROP TABLE IF EXISTS logs;
+
+CREATE TABLE IF NOT EXISTS quota (
+    credential_id TEXT PRIMARY KEY,
+    quota_5h  FLOAT NOT NULL DEFAULT 1.0,
+    quota_7d  FLOAT NOT NULL DEFAULT 1.0,
+    reset_5h TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reset_7d TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    throttled_until TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quota_remaining ON quota(quota_5h DESC, quota_7d DESC);
+
+CREATE TABLE IF NOT EXISTS auth_keys (
+    key  TEXT PRIMARY KEY,
+    role TEXT NOT NULL DEFAULT 'user',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

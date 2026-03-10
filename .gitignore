@@ -1,0 +1,10 @@
+.ace-tool/
+build/
+internal/db
+.idea/
+web/node_modules/
+web/.nuxt/
+web/.output/
+/web/dist/
+*.db
+*.exe

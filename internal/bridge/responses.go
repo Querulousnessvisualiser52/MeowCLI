@@ -1,0 +1,183 @@
+package bridge
+
+import (
+	"MeowCLI/api"
+	"MeowCLI/internal/settings"
+	"MeowCLI/utils"
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+// ModelStore 提供模型别名到上游模型名的映射
+type ModelStore interface {
+	ResolveModel(ctx context.Context, alias string) (origin string, handler utils.HandlerType, err error)
+}
+
+// CredentialScheduler 提供凭证调度与状态记录（每个 HandlerType 独立一个）
+type CredentialScheduler interface {
+	Pick(ctx context.Context, planType string) (credentialID string, err error)
+	// AuthHeaders 返回该凭证的认证头（如 Authorization, Account-Id 等），由各类型自行实现
+	AuthHeaders(ctx context.Context, credentialID string) (http.Header, error)
+	RecordSuccess(ctx context.Context, credentialID string, statusCode int32)
+	RecordFailure(ctx context.Context, credentialID string, statusCode int32, text string, retryAfter time.Duration)
+	HandleUnauthorized(ctx context.Context, credentialID string, statusCode int32, text string) bool
+}
+
+type modelInfo struct {
+	origin  string
+	handler utils.HandlerType
+}
+
+// Handler 处理 /v1/responses 请求
+type Handler struct {
+	backends   map[utils.HandlerType]api.Backend
+	models     ModelStore
+	schedulers map[utils.HandlerType]CredentialScheduler
+	settings   settings.Provider
+}
+
+func NewHandler(models ModelStore, schedulers map[utils.HandlerType]CredentialScheduler, backends ...api.Backend) *Handler {
+	m := make(map[utils.HandlerType]api.Backend, len(backends))
+	for _, b := range backends {
+		m[b.HandlerType()] = b
+	}
+	return &Handler{
+		backends:   m,
+		models:     models,
+		schedulers: schedulers,
+	}
+}
+
+func (h *Handler) SetSettingsProvider(provider settings.Provider) {
+	if h == nil {
+		return
+	}
+	h.settings = provider
+}
+
+func (h *Handler) Route(apiType utils.APIType) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h.handle(c, apiType)
+	}
+}
+
+func (h *Handler) resolveModel(ctx context.Context, alias string) (*modelInfo, error) {
+	origin, handler, err := h.models.ResolveModel(ctx, alias)
+	if err != nil {
+		return nil, err
+	}
+	return &modelInfo{origin: origin, handler: handler}, nil
+}
+
+func (h *Handler) maxRetries() int {
+	if h == nil || h.settings == nil {
+		return settings.DefaultSnapshot().RelayMaxRetries
+	}
+	return h.settings.Snapshot().RelayMaxRetries
+}
+
+func (h *Handler) maxAttempts() int {
+	retries := h.maxRetries()
+	if retries < 0 {
+		retries = 0
+	}
+	return retries + 1
+}
+
+func (h *Handler) streamSSE(c *gin.Context, resp *http.Response, backend api.Backend, alias string) error {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+
+	flusher, _ := c.Writer.(http.Flusher)
+
+	defer func(Body io.ReadCloser) {
+		_ = Body.Close()
+	}(resp.Body)
+
+	// 不需要替换时直接透传
+	if alias == "" {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				if _, writeErr := c.Writer.Write(buf[:n]); writeErr != nil {
+					return writeErr
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+		}
+	}
+
+	// 需要替换：逐行读取，替换 data 行中的 model 字段。
+	reader := bufio.NewReaderSize(resp.Body, 32*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if writeErr := writeSSELine(c.Writer, backend, alias, line); writeErr != nil {
+				return writeErr
+			}
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func writeSSELine(w io.Writer, backend api.Backend, alias string, line []byte) error {
+	line = bytes.TrimSuffix(line, []byte("\n"))
+	line = bytes.TrimSuffix(line, []byte("\r"))
+
+	if payload, ok := sseDataPayload(line); ok {
+		if len(payload) > 0 && payload[0] == '{' {
+			replaced := backend.ReplaceModel(payload, alias)
+			if _, err := w.Write([]byte("data: ")); err != nil {
+				return err
+			}
+			if _, err := w.Write(replaced); err != nil {
+				return err
+			}
+			_, err := w.Write([]byte("\n"))
+			return err
+		}
+	}
+
+	if _, err := w.Write(line); err != nil {
+		return err
+	}
+	_, err := w.Write([]byte("\n"))
+	return err
+}
+
+func sseDataPayload(line []byte) ([]byte, bool) {
+	switch {
+	case bytes.HasPrefix(line, []byte("data: ")):
+		return line[6:], true
+	case bytes.HasPrefix(line, []byte("data:")):
+		return line[5:], true
+	default:
+		return nil, false
+	}
+}

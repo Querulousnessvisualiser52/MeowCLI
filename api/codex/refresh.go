@@ -1,0 +1,70 @@
+package codex
+
+import (
+	"MeowCLI/api"
+	codexutils "MeowCLI/api/codex/utils"
+	"MeowCLI/utils"
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+type RTResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+func (c *Client) RefreshAccessToken(ctx context.Context, refreshToken string) (*codexutils.CodexTokenData, bool, error) {
+	if refreshToken == "" {
+		return nil, false, fmt.Errorf("refresh token was eaten by a cat")
+	}
+
+	var result RTResponse
+	_, err := c.client.R().
+		SetContext(ctx).
+		SetHeader("Accept", "application/json").
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetFormData(map[string]string{
+			"client_id":     codexutils.ClientID,
+			"grant_type":    "refresh_token",
+			"refresh_token": refreshToken,
+			"scope":         "openid profile email",
+		}).
+		SetResult(&result).
+		Post(codexutils.RefreshTokenURL)
+	if err != nil {
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) {
+			retryable := apiErr.StatusCode != http.StatusUnauthorized
+			return nil, retryable, err
+		}
+		return nil, true, fmt.Errorf("token refresh request failed: %w", err)
+	}
+
+	claims, err := utils.ParseJWT(result.IDToken)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to parse refreshed ID token")
+	}
+
+	accountID := ""
+	email := ""
+	if claims != nil {
+		accountID = claims.GetAccountID()
+		email = claims.GetEmail()
+	}
+
+	return &codexutils.CodexTokenData{
+		IDToken:      result.IDToken,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		AccountID:    accountID,
+		Email:        email,
+		Expire:       time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).Format(time.RFC3339),
+	}, false, nil
+}
